@@ -1,20 +1,20 @@
-import os
+from pathlib import Path
+
+p = Path("/mnt/data/main.py")
+text = """import os
 import sqlite3
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters,
+    Application, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ContextTypes, filters,
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
-# Majburiy kanal:
-# Masalan: @FilmCreativ
 FORCE_CHANNEL = os.getenv("FORCE_CHANNEL", "")
 FORCE_CHANNEL_URL = os.getenv("FORCE_CHANNEL_URL", "")
 
@@ -23,21 +23,42 @@ DB = "movies.db"
 conn = sqlite3.connect(DB, check_same_thread=False)
 cur = conn.cursor()
 
-cur.execute("""
+cur.execute('''
 CREATE TABLE IF NOT EXISTS movies (
     code TEXT PRIMARY KEY,
     file_id TEXT NOT NULL,
     file_type TEXT NOT NULL
 )
-""")
+''')
 
-cur.execute("""
+cur.execute('''
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY
 )
-""")
-
+''')
 conn.commit()
+
+
+# =========================
+# RENDER PORT SERVER
+# =========================
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+    def log_message(self, format, *args):
+        return
+
+
+def start_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    print(f"Render port: {port}")
+    server.serve_forever()
 
 
 # =========================
@@ -70,10 +91,8 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chat_id=FORCE_CHANNEL,
             user_id=user.id
         )
-
         if member.status in ["member", "administrator", "creator"]:
             return True
-
     except Exception as e:
         print("Subscription tekshirish xatosi:", e)
 
@@ -98,7 +117,6 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "❗ Kino olish uchun avval kanalimizga a'zo bo'ling.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
     return False
 
 
@@ -107,12 +125,11 @@ async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # =========================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     save_user(update.effective_user.id)
 
     await update.message.reply_text(
-        "🎬 Kino botga xush kelibsiz!\n\n"
-        "🔢 Kino kodini yuboring.\n"
+        "🎬 Kino botga xush kelibsiz!\\n\\n"
+        "🔢 Kino kodini yuboring.\\n"
         "Bot sizga kinoni chiqarib beradi."
     )
 
@@ -122,9 +139,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     await update.message.reply_text(
-        f"🆔 Sizning Telegram ID'ingiz:\n\n"
+        f"🆔 Sizning Telegram ID'ingiz:\\n\\n"
         f"{update.effective_user.id}"
     )
 
@@ -134,41 +150,19 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Siz admin emassiz.")
         return
 
     keyboard = [
-        [
-            InlineKeyboardButton(
-                "🎬 Kino qo'shish",
-                callback_data="add_movie"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🗑 Kino o'chirish",
-                callback_data="delete_movie"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📋 Kinolar",
-                callback_data="movie_list"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📊 Statistika",
-                callback_data="stats"
-            )
-        ],
+        [InlineKeyboardButton("🎬 Kino qo'shish", callback_data="add_movie")],
+        [InlineKeyboardButton("🗑 Kino o'chirish", callback_data="delete_movie")],
+        [InlineKeyboardButton("📋 Kinolar", callback_data="movie_list")],
+        [InlineKeyboardButton("📊 Statistika", callback_data="stats")],
     ]
 
     await update.message.reply_text(
-        "👑 ADMIN PANEL\n\n"
-        "Kerakli bo'limni tanlang:",
+        "👑 ADMIN PANEL\\n\\nKerakli bo'limni tanlang:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -178,7 +172,6 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     query = update.callback_query
     await query.answer()
 
@@ -188,123 +181,73 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     action = query.data
 
-    # KINO QO'SHISH
     if action == "add_movie":
-
         context.user_data["admin_action"] = "waiting_movie"
-
         await query.edit_message_text(
-            "🎬 KINO QO'SHISH\n\n"
-            "Menga video yoki kino faylini yuboring."
+            "🎬 KINO QO'SHISH\\n\\nMenga video yoki kino faylini yuboring."
         )
 
-    # KINO O'CHIRISH
     elif action == "delete_movie":
-
         context.user_data["admin_action"] = "delete_movie"
-
         await query.edit_message_text(
-            "🗑 Kino o'chirish\n\n"
-            "O'chirmoqchi bo'lgan kino kodini yuboring."
+            "🗑 Kino o'chirish\\n\\nO'chirmoqchi bo'lgan kino kodini yuboring."
         )
 
-    # KINOLAR RO'YXATI
     elif action == "movie_list":
-
-        cur.execute(
-            "SELECT code FROM movies ORDER BY code"
-        )
-
+        cur.execute("SELECT code FROM movies ORDER BY code")
         movies = cur.fetchall()
 
         if not movies:
             text = "📋 Hozircha kinolar yo'q."
         else:
-            text = "📋 KINOLAR:\n\n"
-
+            text = "📋 KINOLAR:\\n\\n"
             for movie in movies:
-                text += f"🎬 {movie[0]}\n"
+                text += f"🎬 {movie[0]}\\n"
 
-        keyboard = [[
-            InlineKeyboardButton(
-                "🔙 Admin panel",
-                callback_data="back_admin"
-            )
-        ]]
+        keyboard = [[InlineKeyboardButton(
+            "🔙 Admin panel", callback_data="back_admin"
+        )]]
 
         await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            text, reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    # STATISTIKA
     elif action == "stats":
-
         cur.execute("SELECT COUNT(*) FROM movies")
         movie_count = cur.fetchone()[0]
 
         cur.execute("SELECT COUNT(*) FROM users")
         user_count = cur.fetchone()[0]
 
-        keyboard = [[
-            InlineKeyboardButton(
-                "🔙 Admin panel",
-                callback_data="back_admin"
-            )
-        ]]
+        keyboard = [[InlineKeyboardButton(
+            "🔙 Admin panel", callback_data="back_admin"
+        )]]
 
         await query.edit_message_text(
-            f"📊 STATISTIKA\n\n"
-            f"👥 Foydalanuvchilar: {user_count}\n"
+            f"📊 STATISTIKA\\n\\n"
+            f"👥 Foydalanuvchilar: {user_count}\\n"
             f"🎬 Kinolar: {movie_count}",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    # ORQAGA
     elif action == "back_admin":
-
         keyboard = [
-            [
-                InlineKeyboardButton(
-                    "🎬 Kino qo'shish",
-                    callback_data="add_movie"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🗑 Kino o'chirish",
-                    callback_data="delete_movie"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "📋 Kinolar",
-                    callback_data="movie_list"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "📊 Statistika",
-                    callback_data="stats"
-                ),
-            ],
+            [InlineKeyboardButton("🎬 Kino qo'shish", callback_data="add_movie")],
+            [InlineKeyboardButton("🗑 Kino o'chirish", callback_data="delete_movie")],
+            [InlineKeyboardButton("📋 Kinolar", callback_data="movie_list")],
+            [InlineKeyboardButton("📊 Statistika", callback_data="stats")],
         ]
 
         await query.edit_message_text(
-            "👑 ADMIN PANEL\n\n"
-            "Bo'limni tanlang:",
+            "👑 ADMIN PANEL\\n\\nBo'limni tanlang:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    # A'ZOLIKNI TEKSHIRISH
     elif action == "check_sub":
-
         ok = await check_subscription(update, context)
-
         if ok:
             await query.edit_message_text(
-                "✅ A'zolik tasdiqlandi!\n\n"
-                "Endi kino kodini yuboring."
+                "✅ A'zolik tasdiqlandi!\\n\\nEndi kino kodini yuboring."
             )
 
 
@@ -313,25 +256,19 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def receive_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if update.effective_user.id != ADMIN_ID:
         return
 
     action = context.user_data.get("admin_action")
-
     if action != "waiting_movie":
         return
 
     if update.message.video:
-
         file_id = update.message.video.file_id
         file_type = "video"
-
     elif update.message.document:
-
         file_id = update.message.document.file_id
         file_type = "document"
-
     else:
         return
 
@@ -340,10 +277,9 @@ async def receive_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["admin_action"] = "waiting_code"
 
     await update.message.reply_text(
-        "✅ Kino qabul qilindi!\n\n"
-        "🔢 Endi kino kodini yuboring.\n\n"
-        "Masalan:\n"
-        "1234"
+        "✅ Kino qabul qilindi!\\n\\n"
+        "🔢 Endi kino kodini yuboring.\\n\\n"
+        "Masalan:\\n1234"
     )
 
 
@@ -352,17 +288,12 @@ async def receive_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     text = update.message.text.strip()
 
-    # ADMIN
     if update.effective_user.id == ADMIN_ID:
-
         action = context.user_data.get("admin_action")
 
-        # KINO KODINI SAQLASH
         if action == "waiting_code":
-
             if "file_id" not in context.user_data:
                 return
 
@@ -373,90 +304,63 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "INSERT OR REPLACE INTO movies VALUES (?, ?, ?)",
                 (text, file_id, file_type)
             )
-
             conn.commit()
 
             context.user_data["admin_action"] = None
 
             await update.message.reply_text(
-                f"✅ KINO SAQLANDI!\n\n"
-                f"🎬 Kod: {text}\n"
+                f"✅ KINO SAQLANDI!\\n\\n"
+                f"🎬 Kod: {text}\\n"
                 f"📦 Turi: {file_type}"
             )
-
             return
 
-        # KINO O'CHIRISH
         if action == "delete_movie":
-
             cur.execute(
-                "SELECT code FROM movies WHERE code = ?",
-                (text,)
+                "SELECT code FROM movies WHERE code = ?", (text,)
             )
-
             movie = cur.fetchone()
 
             if not movie:
-
                 await update.message.reply_text(
                     "❌ Bunday koddagi kino topilmadi."
                 )
-
                 return
 
-            cur.execute(
-                "DELETE FROM movies WHERE code = ?",
-                (text,)
-            )
-
+            cur.execute("DELETE FROM movies WHERE code = ?", (text,))
             conn.commit()
-
             context.user_data["admin_action"] = None
 
             await update.message.reply_text(
-                f"🗑 Kino o'chirildi!\n\n"
-                f"🔢 Kod: {text}"
+                f"🗑 Kino o'chirildi!\\n\\n🔢 Kod: {text}"
             )
-
             return
 
-    # USER
     save_user(update.effective_user.id)
 
-    # MAJBURIY A'ZOLIK
     if not await check_subscription(update, context):
         return
 
-    # KINO QIDIRISH
     cur.execute(
-        "SELECT file_id, file_type FROM movies WHERE code = ?",
-        (text,)
+        "SELECT file_id, file_type FROM movies WHERE code = ?", (text,)
     )
-
     movie = cur.fetchone()
 
     if not movie:
-
         await update.message.reply_text(
             "❌ Bunday koddagi kino topilmadi."
         )
-
         return
 
     file_id, file_type = movie
 
     if file_type == "video":
-
         await update.message.reply_video(
-            video=file_id,
-            caption="🎬 FilmCreativ"
+            video=file_id, caption="🎬 FilmCreativ"
         )
-
     else:
-
         await update.message.reply_document(
-            document=file_id,
-            caption="🎬 FilmCreativ"
+            document=file_id, caption="🎬 FilmCreativ"
         )
 
 
@@ -465,7 +369,6 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 
 def main():
-
     if not TOKEN:
         raise ValueError("BOT_TOKEN topilmadi!")
 
@@ -474,43 +377,36 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(
-        CommandHandler("start", start)
-    )
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("myid", myid))
+    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(CallbackQueryHandler(admin_buttons))
 
-    app.add_handler(
-        CommandHandler("myid", myid)
-    )
+    app.add_handler(MessageHandler(
+        filters.VIDEO | filters.Document.ALL,
+        receive_movie
+    ))
 
-    # MUHIM: /admin
-    app.add_handler(
-        CommandHandler("admin", admin)
-    )
-
-    app.add_handler(
-        CallbackQueryHandler(admin_buttons)
-    )
-
-    # Video / document
-    app.add_handler(
-        MessageHandler(
-            filters.VIDEO | filters.Document.ALL,
-            receive_movie
-        )
-    )
-
-    # Text
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            receive_text
-        )
-    )
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND,
+        receive_text
+    ))
 
     print("🤖 Bot ishga tushdi...")
 
+    # Render Web Service portini ochish
+    threading.Thread(
+        target=start_web_server,
+        daemon=True
+    ).start()
+
+    # Telegram botni polling orqali ishga tushirish
     app.run_polling()
 
 
 if __name__ == "__main__":
     main()
+"""
+
+p.write_text(text, encoding="utf-8")
+print(f"Тayyor: {p}")
